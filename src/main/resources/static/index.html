@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="基于 DeepSeek 的国内求职 Agent，支持职位采集、匹配分析、求职材料和投递跟踪。">
+  <title>职航 JobPilot · 国内 AI 求职 Agent</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div>
+      <div><strong>职航</strong><small>JOBPILOT</small></div>
+    </div>
+    <nav class="main-nav" aria-label="主导航">
+      <button class="nav-item active" data-view="dashboard">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h6V4H4v9Zm0 7h6v-4H4v4Zm10 0h6v-9h-6v9Zm0-16v4h6V4h-6Z"/></svg>
+        <span>求职仪表盘</span>
+      </button>
+      <button class="nav-item" data-view="jobs">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6V4h6v2h5v14H4V6h5Zm2 0h2V5h-2v1Zm-5 2v10h12V8H6Z"/></svg>
+        <span>职位库</span><span class="nav-count" id="nav-job-count">0</span>
+      </button>
+      <button class="nav-item" data-view="crawler">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9h-2a7 7 0 1 1-7-7V3Zm1 5v3.3l2.4 2.4-1.4 1.4-3-3V8h2ZM18 3l3 3-1.4 1.4-3-3L18 3Z"/></svg>
+        <span>BOSS 职位采集</span>
+      </button>
+      <button class="nav-item" data-view="applications">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14v18H5V3Zm2 2v14h10V5H7Zm2 3h6v2H9V8Zm0 4h6v2H9v-2Z"/></svg>
+        <span>投递管理</span><span class="nav-count" id="nav-application-count">0</span>
+      </button>
+      <button class="nav-item" data-view="profile">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm0-6a2 2 0 1 1 0 4 2 2 0 0 1 0-4Zm0 7c-4.4 0-8 2.2-8 5v3h16v-3c0-2.8-3.6-5-8-5Zm-6 5c.4-1.5 2.8-3 6-3s5.6 1.5 6 3v1H6v-1Z"/></svg>
+        <span>我的求职档案</span>
+      </button>
+    </nav>
+    <div class="sidebar-bottom">
+      <div class="ai-status-card">
+        <div class="ai-status-head"><span class="status-dot" id="ai-dot"></span><span id="ai-mode">正在检查模型</span></div>
+        <p id="ai-model">DeepSeek OpenAI 兼容接口</p>
+        <button class="text-button" data-view="profile">配置说明 →</button>
+      </div>
+      <p class="sidebar-note">本地优先 · 不自动投递<br>所有材料由你确认后使用</p>
+    </div>
+  </aside>
+
+  <div class="sidebar-backdrop" id="sidebar-backdrop" hidden></div>
+  <main class="main-shell">
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="icon-button mobile-menu" id="mobile-menu" aria-label="打开菜单">☰</button>
+        <div><span class="breadcrumb">职航工作台</span><h2 id="page-title">求职仪表盘</h2></div>
+      </div>
+      <div class="topbar-actions">
+        <span class="local-badge"><span></span> 数据保存在本机 H2</span>
+        <button class="button button-primary" id="top-add-job">＋ 手动录入职位</button>
+      </div>
+    </header>
+
+    <div class="content">
+      <section class="view active" id="view-dashboard">
+        <div class="hero-card">
+          <div class="hero-content">
+            <span class="eyebrow">YOUR NEXT CAREER MOVE</span>
+            <h1>把每一次投递，<br><em>变成有准备的出发。</em></h1>
+            <p>从职位发现、匹配分析到沟通话术与面试准备，<br class="desktop-only">让 DeepSeek 成为你的国内求职搭档。</p>
+            <div class="hero-actions">
+              <button class="button button-light" data-view="jobs">浏览匹配职位 <span>→</span></button>
+              <button class="button button-ghost-light" data-view="crawler">导入 BOSS 职位</button>
+            </div>
+          </div>
+          <div class="hero-orbit" aria-hidden="true">
+            <div class="orbit orbit-one"></div><div class="orbit orbit-two"></div>
+            <div class="orbit-core"><span>AI</span><small>CAREER</small></div>
+            <span class="float-tag tag-one">职位匹配</span><span class="float-tag tag-two">面试准备</span><span class="float-tag tag-three">定向简历</span>
+          </div>
+        </div>
+
+        <div class="stats-grid">
+          <article class="stat-card"><div class="stat-icon purple">职</div><div><span>职位库总量</span><strong id="stat-jobs">—</strong><small>持续积累你的机会池</small></div></article>
+          <article class="stat-card"><div class="stat-icon green">析</div><div><span>已完成分析</span><strong id="stat-analyzed">—</strong><small><b id="stat-high">0</b> 个高匹配职位</small></div></article>
+          <article class="stat-card"><div class="stat-icon blue">投</div><div><span>投递与收藏</span><strong id="stat-applications">—</strong><small>全流程集中跟踪</small></div></article>
+          <article class="stat-card"><div class="stat-icon orange">面</div><div><span>面试 / Offer</span><strong><b id="stat-interviews">—</b><i> / </i><b id="stat-offers">—</b></strong><small>及时更新求职进展</small></div></article>
+        </div>
+
+        <div class="dashboard-grid">
+          <article class="panel">
+            <div class="panel-head"><div><h3>优先关注</h3><p>按匹配分排序，先分析职位即可生成榜单</p></div><button class="text-button" data-view="jobs">全部职位 →</button></div>
+            <div id="dashboard-top-jobs" class="rank-list"><div class="empty-state compact">正在加载…</div></div>
+          </article>
+          <article class="panel">
+            <div class="panel-head"><div><h3>最近进展</h3><p>每一次沟通都值得认真跟进</p></div><button class="text-button" data-view="applications">管理投递 →</button></div>
+            <div id="dashboard-recent" class="activity-list"><div class="empty-state compact">正在加载…</div></div>
+          </article>
+        </div>
+        <div class="demo-notice"><span>提示</span> 初始职位、公司和档案均为明确标识的虚构演示数据，请在“我的求职档案”中替换为真实信息。</div>
+      </section>
+
+      <section class="view" id="view-jobs" hidden>
+        <div class="section-heading"><div><span class="eyebrow dark">OPPORTUNITY PIPELINE</span><h1>职位库</h1><p>统一管理演示、手动录入和 BOSS 导入职位。</p></div><button class="button button-primary" data-action="manual-job">＋ 新增职位</button></div>
+        <div class="filter-bar">
+          <label class="search-box"><span>⌕</span><input id="job-keyword" type="search" placeholder="搜索职位、公司、技能或描述"></label>
+          <select id="job-city" aria-label="城市筛选"><option value="">全部城市</option><option>杭州</option><option>上海</option><option>北京</option><option>深圳</option><option>广州</option></select>
+          <select id="job-source" aria-label="来源筛选"><option value="">全部来源</option><option value="DEMO">演示数据</option><option value="BOSS">BOSS 导入</option><option value="MANUAL">手动录入</option></select>
+          <select id="job-analyzed" aria-label="分析状态"><option value="">全部分析状态</option><option value="true">已分析</option><option value="false">未分析</option></select>
+          <button class="button button-secondary" id="job-filter">筛选</button>
+        </div>
+        <div class="list-meta"><span id="job-result-count">0 个职位</span><span>点击职位查看详情与 Agent 操作</span></div>
+        <div class="job-table-wrap"><div class="job-table-head"><span>职位 / 公司</span><span>城市</span><span>薪资</span><span>来源</span><span>匹配度</span><span>操作</span></div><div id="jobs-list"></div></div>
+      </section>
+
+      <section class="view" id="view-crawler" hidden>
+        <div class="section-heading"><div><span class="eyebrow dark">COMPLIANT JOB IMPORT</span><h1>BOSS 职位采集</h1><p>解析真实页面数据，入库前自动清洗与去重。</p></div></div>
+        <div class="compliance-banner"><div class="banner-icon">✓</div><div><strong>真人协同，不绕过网站限制</strong><p>AI 可解析意图、打开基础页和读取你确认的当前页；扫码、验证、搜索与翻页由你手动完成。持久会话不等于采集授权。</p></div><span class="banner-tag">MCP + Skill 随工程提供</span></div>
+        <div class="crawler-tabs" role="tablist">
+          <button class="crawler-tab active" data-crawler-tab="browser">浏览器协同 + MCP <span>新</span></button>
+          <button class="crawler-tab" data-crawler-tab="online">在线单页采集</button>
+          <button class="crawler-tab" data-crawler-tab="offline">离线 HTML 导入</button>
+          <button class="crawler-tab" data-crawler-tab="manual">手动录入</button>
+        </div>
+
+        <div class="crawler-panel" id="crawler-browser">
+          <div class="browser-flow">
+            <article class="panel form-panel browser-step">
+              <div class="panel-head"><div class="step-title"><span class="step-number">1</span><div><h3>输入岗位，打开 BOSS</h3><p>自然语言可一键解析并打开；也可直接修改表单后打开。重复打开不会清空当前搜索页。</p></div></div><span class="safe-label">两步完成</span></div>
+              <form id="boss-browser-form">
+                <label>自然语言求职需求<textarea name="text" id="boss-intent-text" required maxlength="300" rows="2">帮我搜集杭州 Java 后端岗位数据，最多 10 个</textarea></label>
+                <div class="form-grid two">
+                  <label>职位关键词<input name="query" id="boss-browser-query" required maxlength="100" value="Java 后端"></label>
+                  <label>城市 / 卡片默认城市<select name="city" id="boss-browser-city"><option value="杭州">杭州</option><option value="北京">北京</option><option value="上海">上海</option><option value="深圳">深圳</option><option value="广州">广州</option><option value="成都">成都</option><option value="南京">南京</option><option value="苏州">苏州</option><option value="武汉">武汉</option><option value="西安">西安</option></select></label>
+                  <label>本次最多读取（1–20）<input name="maxItems" id="boss-browser-max" type="number" min="1" max="20" value="10" required></label>
+                </div>
+                <details class="browser-advanced"><summary>高级设置（通常不用修改）</summary><div class="form-grid two">
+                  <label>浏览器运行方式<select name="headless" id="boss-browser-headless"><option value="false">有头模式（推荐）</option><option value="true">无头模式（仅限已建立会话）</option></select></label>
+                  <label>首次打开的页面<select name="jobsPage"><option value="true">基础职位页 /web/geek/job</option><option value="false">BOSS 首页</option></select></label>
+                </div></details>
+                <div class="manual-action-note">程序不会自动填词。首次打开后，请在 BOSS 浏览器里自行登录和搜索；之后不要重复点击打开。</div>
+                <div class="form-actions"><button class="button button-primary" type="submit" data-open-mode="parse">解析并打开 BOSS</button><button class="button button-secondary" type="submit" data-open-mode="direct">按上方条件直接打开</button></div>
+              </form>
+            </article>
+
+            <article class="panel form-panel browser-step confirm-step">
+              <div class="panel-head"><div class="step-title"><span class="step-number">2</span><div><h3>看到职位后，一键采集</h3><p>激活你肉眼看到职位列表的标签页，再点击采集。程序会跟随当前活动标签，不重新打开页面。</p></div></div></div>
+              <div class="browser-status" id="boss-browser-status">
+                <div class="browser-status-head"><span class="browser-state-dot" id="boss-browser-dot"></span><strong id="boss-browser-state">正在读取状态</strong><span id="boss-browser-mode">—</span></div>
+                <p id="boss-browser-message">同步状态不会刷新 BOSS 网页。</p>
+                <div class="browser-url" id="boss-browser-url">当前 URL：—</div>
+              </div>
+              <div class="manual-action-note">点击“确认当前页并采集”即表示你确认：当前活动标签是你手动搜索得到且允许读取的职位列表。单次最多 20 个，不自动翻页。</div>
+              <div class="confirm-content">
+                <button class="button button-primary" type="button" id="boss-collect-current">确认当前页并采集</button>
+                <button class="button button-secondary" type="button" id="boss-browser-refresh">同步当前标签</button>
+                <button class="button button-danger" type="button" id="boss-browser-close">关闭会话</button>
+              </div>
+            </article>
+          </div>
+
+          <details class="panel mcp-help">
+            <summary>在 Claude / Cursor 中通过 MCP 调用</summary>
+            <div class="mcp-help-body"><p>打包后运行同一个 JAR 的 STDIO 模式；stdout 仅用于 JSON-RPC，Web 应用可单独运行。</p><code id="mcp-command">java -Dfile.encoding=UTF-8 -jar "C:\你的路径\ai-job-search-cn.jar" --mcp-stdio</code><button class="mini-button" type="button" id="copy-mcp-command">复制启动命令</button><p>提供 <b>boss_browser_start</b>、<b>boss_open_jobs_page</b>、<b>boss_browser_status</b>、<b>boss_collect_current_page</b>、<b>boss_browser_close</b> 五个工具。Claude / Cursor 配置示例位于工程 <code>mcp/</code> 目录，详见 <code>docs/MCP_BROWSER.md</code>。</p></div>
+          </details>
+        </div>
+
+        <div class="crawler-panel" id="crawler-online" hidden>
+          <div class="panel form-panel"><div class="panel-head"><div><h3>公开搜索页 · 单页模式</h3><p>robots 拒绝时不会请求目标页，失败原因会原样展示。</p></div></div>
+            <form id="boss-online-form">
+              <div class="form-grid two">
+                <label>职位关键词<input name="query" required maxlength="100" value="Java 后端" placeholder="例如：Java 后端"></label>
+                <label>城市<select name="city"><option value="101210100" data-code="101210100">杭州</option><option value="101010100" data-code="101010100">北京</option><option value="101020100" data-code="101020100">上海</option><option value="101280600" data-code="101280600">深圳</option><option value="101280100" data-code="101280100">广州</option></select></label>
+                <label>城市编码<input name="cityCode" required pattern="\d{6,12}" value="101210100"></label>
+                <label>页码（1–3）<input name="page" type="number" min="1" max="3" value="1" required></label>
+              </div>
+              <div class="form-actions"><button class="button button-primary" type="submit">检查权限并开始采集</button><span class="form-hint">单页、低频、无自动重试</span></div>
+            </form>
+          </div>
+        </div>
+
+        <div class="crawler-panel" id="crawler-offline" hidden>
+          <div class="panel form-panel"><div class="panel-head"><div><h3>从浏览器保存的页面导入</h3><p>在 BOSS 正常浏览职位列表后保存完整网页 HTML，粘贴到下方。文件只在本机解析。</p></div><span class="safe-label">无需账号或 Cookie</span></div>
+            <form id="boss-import-form">
+              <div class="form-grid two"><label>默认城市（卡片缺地点时使用）<input name="city" maxlength="80" value="杭州"></label><label class="file-field">从本地读取 .html 文件<input type="file" id="boss-html-file" accept=".html,.htm,.txt"><span>选择文件（≤ 2 MB）</span></label></div>
+              <label>职位列表 HTML<textarea name="html" id="boss-html" required placeholder="粘贴包含 job-card-wrapper 或 job-card-box 的完整 HTML…" rows="12"></textarea></label>
+              <div class="form-actions"><button class="button button-primary" type="submit">解析并导入职位</button><button class="button button-secondary" type="button" id="load-boss-demo">载入演示 HTML</button><span class="form-hint">单次最多 100 个有效职位</span></div>
+            </form>
+          </div>
+        </div>
+
+        <div class="crawler-panel" id="crawler-manual" hidden>
+          <div class="panel form-panel"><div class="panel-head"><div><h3>手动录入真实职位</h3><p>适用于复制职位正文、其他国内招聘平台或线下机会。</p></div></div>
+            <form id="manual-job-form">
+              <div class="form-grid two">
+                <label>职位名称 *<input name="title" required maxlength="200" placeholder="例如：Java 后端工程师"></label>
+                <label>公司名称 *<input name="company" required maxlength="200" placeholder="真实公司名称"></label>
+                <label>城市<input name="city" maxlength="80" placeholder="杭州"></label>
+                <label>区域<input name="district" maxlength="120" placeholder="西湖区"></label>
+                <label>薪资<input name="salary" maxlength="80" placeholder="20-30K"></label>
+                <label>经验要求<input name="experienceRequirement" maxlength="80" placeholder="3-5年"></label>
+                <label>学历要求<input name="educationRequirement" maxlength="80" placeholder="本科"></label>
+                <label>原始链接<input name="sourceUrl" type="url" maxlength="1000" placeholder="https://…"></label>
+              </div>
+              <label>技能标签<input name="tags" maxlength="1000" placeholder="Java、Spring Boot、Redis"></label>
+              <label>职位描述 *<textarea name="description" required maxlength="30000" rows="8" placeholder="粘贴真实岗位职责与任职要求…"></textarea></label>
+              <div class="form-actions"><button class="button button-primary" type="submit">保存到职位库</button></div>
+            </form>
+          </div>
+        </div>
+        <div id="crawler-result" class="result-box" hidden></div>
+      </section>
+
+      <section class="view" id="view-applications" hidden>
+        <div class="section-heading"><div><span class="eyebrow dark">APPLICATION TRACKER</span><h1>投递管理</h1><p>不自动投递；只记录你确认发生的真实进展。</p></div><button class="button button-primary" data-view="jobs">从职位库添加</button></div>
+        <div class="pipeline-hint"><span>已收藏</span><i>→</i><span>已投递</span><i>→</i><span>沟通中</span><i>→</i><span>面试中</span><i>→</i><span>Offer</span></div>
+        <div class="panel application-panel"><div class="application-table-head"><span>职位</span><span>当前状态</span><span>跟进备注</span><span>更新时间</span><span>操作</span></div><div id="applications-list"></div></div>
+      </section>
+
+      <section class="view" id="view-profile" hidden>
+        <div class="section-heading"><div><span class="eyebrow dark">CANDIDATE SOURCE OF TRUTH</span><h1>我的求职档案</h1><p>Agent 只能使用这里提供的事实。内容越真实具体，生成结果越有帮助。</p></div></div>
+        <div class="profile-layout">
+          <form id="profile-form" class="panel form-panel">
+            <div class="panel-head"><div><h3>基本信息</h3><p>请先替换所有“示例”内容，再生成投递材料。</p></div><span class="safe-label">仅存本机数据库</span></div>
+            <div class="form-grid two">
+              <label>姓名 / 称呼 *<input name="name" required maxlength="80"></label>
+              <label>当前职业方向 *<input name="currentTitle" required maxlength="120"></label>
+              <label>意向城市 *<input name="city" required maxlength="80"></label>
+              <label>工作年限 *<input name="yearsOfExperience" type="number" min="0" max="60" required></label>
+              <label>期望薪资<input name="expectedSalary" maxlength="80"></label>
+              <label>目标岗位（顿号分隔）<input name="targetRoles" maxlength="1000"></label>
+            </div>
+            <label>技能清单（顿号分隔）<input name="skills" maxlength="2000" placeholder="Java、Spring Boot、MySQL"></label>
+            <label>教育背景<input name="education" maxlength="500"></label>
+            <label>真实工作经历 *<textarea name="experience" required maxlength="20000" rows="7"></textarea></label>
+            <label>真实项目与可核验成果 *<textarea name="projectHighlights" required maxlength="20000" rows="7"></textarea></label>
+            <div class="form-actions"><button class="button button-primary" type="submit">保存求职档案</button><span class="form-hint">不会自动同步到任何第三方</span></div>
+          </form>
+          <aside class="profile-side">
+            <div class="panel config-card"><h3>DeepSeek 配置</h3><p>在 IDEA 的 Run Configuration 中添加环境变量，然后重启应用：</p><code>DEEPSEEK_API_KEY=sk-你的密钥<br>DEEPSEEK_BASE_URL=https://api.deepseek.com<br>DEEPSEEK_MODEL=deepseek-flash</code><p class="small-text">密钥不会显示在页面、写入数据库或打印到日志。未配置时自动使用本地规则模式。</p><a href="https://api-docs.deepseek.com/" target="_blank" rel="noopener noreferrer" class="text-button">查看官方接口文档 ↗</a></div>
+            <div class="panel honesty-card"><h3>真实度保护</h3><ul><li>不补造公司和项目经历</li><li>不虚构性能与绩效数字</li><li>职位正文按不可信输入处理</li><li>所有材料都需要人工确认</li></ul></div>
+          </aside>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<div class="modal" id="job-modal" hidden role="dialog" aria-modal="true" aria-labelledby="modal-job-title">
+  <div class="modal-backdrop" data-close-modal></div>
+  <div class="modal-card">
+    <button class="modal-close" data-close-modal aria-label="关闭">×</button>
+    <div id="job-modal-body" class="modal-body"><div class="empty-state">正在加载…</div></div>
+  </div>
+</div>
+<div class="toast-region" id="toast-region" aria-live="polite"></div>
+<div class="top-progress" id="top-progress" hidden></div>
+<script src="/js/app.js" defer></script>
+</body>
+</html>

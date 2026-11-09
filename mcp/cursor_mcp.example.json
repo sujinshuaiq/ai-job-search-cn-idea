@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "jobpilot-boss": {
+      "command": "java",
+      "args": [
+        "-Dfile.encoding=UTF-8",
+        "-jar",
+        "C:\\absolute\\path\\ai-job-search-cn.jar",
+        "--mcp-stdio"
+      ],
+      "env": {
+        "JOB_SEARCH_API_BASE": "http://127.0.0.1:8080",
+        "BOSS_BROWSER_HEADLESS": "false",
+        "BOSS_BROWSER_CHANNEL": "chrome",
+        "BOSS_BROWSER_PROFILE": "./data/browser-profile"
+      }
+    }
+  }
+}
