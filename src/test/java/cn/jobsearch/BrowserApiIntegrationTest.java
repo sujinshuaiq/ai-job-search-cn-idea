@@ -49,4 +49,20 @@ class BrowserApiIntegrationTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
     }
+
+    @Test
+    void blocksOnlineAndBrowserOperationsBeforeAnyNetworkAccessByDefault() throws Exception {
+        mvc.perform(post("/api/browser/boss/open").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"jobsPage\":true,\"headless\":false}"))
+                .andExpect(status().isPreconditionRequired())
+                .andExpect(jsonPath("$.code").value("BOSS_BROWSER_DISABLED"));
+        mvc.perform(post("/api/browser/boss/collect").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"city\":\"杭州\",\"maxItems\":10,\"confirmedCurrentPage\":true}"))
+                .andExpect(status().isPreconditionRequired())
+                .andExpect(jsonPath("$.code").value("BOSS_BROWSER_DISABLED"));
+        mvc.perform(post("/api/crawler/boss/search").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"query\":\"Java\",\"cityCode\":\"101210100\",\"city\":\"杭州\",\"page\":1}"))
+                .andExpect(status().isPreconditionRequired())
+                .andExpect(jsonPath("$.code").value("BOSS_ONLINE_DISABLED"));
+    }
 }

@@ -1,7 +1,7 @@
 "use strict";
 
 const state = { jobs: [], applications: [], currentJob: null, ai: null, view: "dashboard" };
-const viewTitles = { dashboard: "求职仪表盘", jobs: "职位库", crawler: "BOSS 职位采集", applications: "投递管理", profile: "我的求职档案" };
+const viewTitles = { dashboard: "求职仪表盘", agent: "求职 Agent", jobs: "职位库", crawler: "BOSS 职位采集", applications: "投递管理", profile: "我的求职档案" };
 const statusLabels = { SAVED: "已收藏", APPLIED: "已投递", CHATTING: "沟通中", INTERVIEWING: "面试中", OFFER: "Offer", REJECTED: "已拒绝", CLOSED: "已结束" };
 let pendingRequests = 0;
 
@@ -520,6 +520,7 @@ async function saveManualJob(event) {
 
 async function init() {
   bindEvents();
+  showCrawlerTab("offline");
   await Promise.allSettled([loadAiStatus(), loadDashboard(), loadJobs(), loadApplications(), loadProfile()]);
   const initialView = new URLSearchParams(window.location.search).get("view");
   if (viewTitles[initialView] && initialView !== "dashboard") await showView(initialView);

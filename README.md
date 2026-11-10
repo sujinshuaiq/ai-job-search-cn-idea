@@ -8,31 +8,34 @@
 
 ## 已实现功能
 
+- **Spring AI 求职 Agent**：自然语言目标 → 模型规划 → 受限工具调用 → 真实执行轨迹；模型任务在有界后台执行器中运行，前端每约 1.2 秒自动更新，不再让 POST 同步等待到底。
+- **对话记忆与任务恢复**：`ChatClient` + `MessageChatMemoryAdvisor` + JDBC ChatMemory，同一对话默认保留最近 24 条消息；任务、步骤和确认单持久化。
 - **求职仪表盘**：职位、分析、高匹配、投递、面试与 Offer 统计。
 - **中文职位库**：关键词、城市、来源、分析状态筛选，查看职位详情。
-- **BOSS 直聘 Skill**：robots.txt 前置检查、公开单页入口、离线 HTML 解析、字段清洗和 SHA-256 去重。
-- **真实浏览器协同**：Playwright 持久化本机会话；首次人工扫码，用户手动搜索并确认后读取当前页，单次最多 20 个职位。
-- **MCP / Agent 工具**：同一 JAR 以 `--mcp-stdio` 启动，向 Claude、Cursor 提供 5 个 BOSS 浏览器工具；stdout 仅输出 JSON-RPC。
-- **自然语言 + 界面选择**：DeepSeek JSON 意图解析，无密钥时使用本地中英文规则；关键词、城市、条数和运行方式均可编辑。
-- **手动职位录入**：支持其他国内招聘平台或线下职位，不依赖页面结构。
-- **DeepSeek Agent**：通过 OpenAI 兼容 `/chat/completions` 生成匹配分析、定向简历、BOSS 初次沟通话术和面试题。
-- **无密钥本地模式**：明确标识 `LOCAL_DEMO`，用规则评分和模板完成全流程演示，不冒充 AI。
+- **默认离线职位导入**：页面默认进入离线 HTML 导入，本机 Jsoup 解析、字段清洗和 SHA-256 去重；也可手动录入国内其他平台职位。
+- **BOSS 在线功能默认关闭**：`BOSS_BROWSER_ENABLED=false`、`BOSS_ONLINE_ENABLED=false`，Web、Agent、MCP 均在任何浏览器、robots 或目标网络请求之前统一拒绝。
+- **可选浏览器协同**：只有用户显式开启后才提供 Playwright 持久会话、手动搜索和当前页确认读取；模拟人工也不能避免封号。
+- **MCP / Agent 工具**：同一 JAR 以 `--mcp-stdio` 启动，保留 5 个 BOSS 工具 Schema；默认 start/open/collect 同样返回禁用错误，不启动浏览器。
+- **自然语言 + 界面选择**：DeepSeek 结构化意图解析，无密钥时使用本地中英文规则；意图解析本身不访问 BOSS。
+- **DeepSeek 固定功能**：通过 Spring AI 结构化输出生成匹配分析、定向简历、BOSS 初次沟通话术和面试题。
+- **人工确认边界**：模型不能直接采集 BOSS 当前页；可选浏览器功能开启后仍需一次性确认单，不自动投递。
+- **无密钥本地模式**：明确标识 `LOCAL_DEMO`，用规则评分和模板完成固定功能演示，不冒充 AI。
 - **求职档案**：单一事实来源，提示词禁止模型虚构经历与绩效。
 - **投递管理**：收藏、已投递、沟通中、面试、Offer、拒绝和结束状态，支持备注。
 - **本地持久化**：H2 文件数据库，重启后数据保留。
-- **免构建前端**：原生 HTML/CSS/JavaScript，响应式布局，无外部 CDN。
+- **免构建前端**：原生 HTML/CSS/JavaScript，响应式布局，无外部 CDN；静态资源带版本参数，降低旧脚本缓存影响。
 
 ## 技术栈
 
 | 层 | 技术 |
 |---|---|
-| 后端 | Java 17、Spring Boot 3.3、Spring MVC |
-| 数据 | Spring Data JPA、H2 |
-| AI | DeepSeek OpenAI 兼容 API、Java HttpClient、Jackson |
+| 后端 | Java 17、Spring Boot 3.5.15、Spring MVC |
+| 数据 | Spring Data JPA、H2、Spring AI JDBC ChatMemory |
+| AI | Spring AI 1.1.8、ChatClient、@Tool、DeepSeek OpenAI 兼容 API |
 | 采集 | Jsoup、robots.txt 规则检查、限速与失败关闭 |
 | 浏览器 / MCP | Playwright Java 持久会话、自实现 MCP 2024-11-05 STDIO |
 | 前端 | 原生 HTML、CSS、JavaScript |
-| 测试 | JUnit 5、AssertJ、MockMvc、JDK 本地模拟 HTTP 服务 |
+| 测试 | JUnit 5、AssertJ、MockMvc、JDK 本地模拟 OpenAI / HTTP 服务 |
 
 ## 1. 在 IDEA 中直接运行
 
@@ -95,21 +98,44 @@ Content-Type: application/json
 - 不会发起 DeepSeek 网络请求。
 - 本地结果明确标注“不是 DeepSeek AI 分析”。
 
-只有你自己的真实密钥才能验证实网模型效果；本地模拟 HTTP 测试只验证协议、鉴权头和 JSON 解析。
+只有你自己的真实密钥才能验证实网模型效果；本地模拟 HTTP 测试验证协议、鉴权头、结构化输出和工具调用，不等于实网模型或 BOSS 登录采集验收。无密钥时，对话式 Agent 会明确说明未调用模型和工具；固定分析/材料按钮仍可使用本地规则。
 
-## 3. BOSS 职位采集说明
+## 3. 对话式求职 Agent
 
-### 浏览器协同 + MCP（真实浏览器，两步操作）
+打开左侧 **求职 Agent**，或访问 <http://localhost:8080/?view=agent>：
 
-1. 本机安装 Chrome 或 Edge，无需 Go、Node 或额外 MCP 二进制。首次保持默认有头模式。
-2. 打开“BOSS 职位采集 → 浏览器协同 + MCP”，输入自然语言后点击 **解析并打开 BOSS**；也可修改关键词、城市和条数后点击 **按上方条件直接打开**，不调用 DeepSeek。
-3. 首次真正导航前，程序检查 robots.txt，只打开无 query 的首页或 `/web/geek/job`。在真实浏览器中由你手动扫码、完成验证、输入关键词与城市并搜索；程序不会自动填词或翻页。
-4. 激活肉眼可见职位列表的标签，点击 **确认当前页并采集**。不再需要单独勾选确认框；可先点“同步当前标签”核对 URL，同步状态不会刷新 BOSS 网页。
-5. 结果区显示解析、新增、重复数和前 5 个职位预览。单次最多 20 个卡片；之后手动换条件或翻页，直接再次执行第二步即可。
+- 查询已有职位：`查询职位库里杭州的 Java 后端岗位，告诉我最匹配的 3 个及理由`，不需要打开浏览器。
+- 分析职位：`分析职位 ID 1 和我档案的匹配度`。
+- 生成材料：`根据我的真实求职档案，为职位 ID 1 生成定向简历和初次沟通话术`。
+- 新增职位：先使用离线 HTML 或手动录入，再让 Agent 查询；默认模式下 Agent 不获得 BOSS 工具。
 
-重复打开已有 BOSS 页面不会重新导航；搜索打开新标签后，状态与采集会优先跟随当前可见的 BOSS 标签。完整两步说明、旧工程升级和故障排查见 [`docs/BOSS_GUIDE.md`](docs/BOSS_GUIDE.md)。
+配置模型后，POST 只负责创建任务并立即返回 `RUNNING`；模型和工具在核心 2、最大 4、队列 32 的后台执行器中运行，页面每约 1.2 秒读取状态，终态自动停止。后台队列拒绝会记录为 `FAILED`，不会永远卡住；运行中不伪报支持强制取消。无密钥本地任务仍立即返回 `COMPLETED / LOCAL_DEMO`。
 
-会话目录默认为 `./data/browser-profile`，已被 `.gitignore` 排除。可用环境变量 `BOSS_BROWSER_PROFILE`、`BOSS_BROWSER_HEADLESS`、`BOSS_BROWSER_CHANNEL=chrome|msedge`、`BOSS_BROWSER_EXECUTABLE_PATH`、`BOSS_BROWSER_TIMEOUT_MS` 调整。程序自动探测 Windows 标准 Chrome/Edge 安装路径，并强制 `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`，不会自动下载浏览器。非标准安装位置可将 `BOSS_BROWSER_EXECUTABLE_PATH` 设为浏览器 exe 绝对路径。无头模式只用于已经建立会话的后续运行，不保证第三方网站允许无头登录。
+默认注册 6 个受限工具，只有显式开启浏览器功能才增加 2 个 BOSS 工具。单任务默认最多 8 次调用；档案与投递工具只读，模型没有当前页采集或确认工具。任务轨迹来自数据库，不把模型自述当作执行凭证。
+
+配置 DeepSeek 后，对话、必要工具结果和档案内容可能发送至模型服务。完整使用、隐私和排错说明见 [`docs/AGENT_GUIDE.md`](docs/AGENT_GUIDE.md)。
+
+## 4. 职位导入与 BOSS 默认离线说明
+
+### 离线 HTML 导入（默认推荐）
+
+1. 在正常浏览器中查看职位列表并保存完整网页 HTML，不借助本程序绕过登录或验证。
+2. 打开应用“BOSS 职位采集”，本版默认已选中 **离线 HTML 导入**。
+3. 选择文件或粘贴内容，点击“解析并导入职位”。文件只在本机解析，不执行脚本、不读取 Cookie、不请求详情页。
+4. 点击“载入演示 HTML”可不访问网站，直接验证 3 个虚构职位的导入与重复去重。
+
+也可使用“手动录入”添加其他国内招聘平台或线下职位。解析器只保存真实卡片中存在的字段，不补写职位责任。
+
+### 在线与浏览器功能默认关闭
+
+```text
+BOSS_BROWSER_ENABLED=false
+BOSS_ONLINE_ENABLED=false
+```
+
+默认不会自动启动浏览器、刷新或请求 BOSS。Web、Agent 和 MCP 的 start/open/collect 都经过服务端统一禁用边界；在线 search 在 robots 之前返回 `BOSS_ONLINE_DISABLED`。这不是“防封号”技术，而是默认不执行可能带来账号风险的在线自动操作。
+
+只有明确了解风险并确认有权操作时，才自行将对应开关设为 true 并重启。可选浏览器功能仍为“打开基础页 → 用户手动登录搜索 → 确认当前页读取一次”；可选在线入口仍先检查 robots，拒绝时不请求目标页。开启不代表获得授权或能避免封号。
 
 MCP STDIO 启动：
 
@@ -117,35 +143,13 @@ MCP STDIO 启动：
 java -Dfile.encoding=UTF-8 -jar target/ai-job-search-cn.jar --mcp-stdio
 ```
 
-Claude Desktop 和 Cursor 示例在 `mcp/`。把示例里的 `C:\absolute\path\ai-job-search-cn.jar` 替换为本机 JAR 绝对路径；`JOB_SEARCH_API_BASE` 默认 `http://127.0.0.1:8080`。MCP 的 `importToApp` 默认 false，只有显式为 true 才导入另行启动的 Web 应用。完整工具与安全边界见 [`docs/MCP_BROWSER.md`](docs/MCP_BROWSER.md)。
+MCP 保留 5 个工具 Schema，默认同样不会启动浏览器。MCP 是独立 JVM，可选浏览器开关必须设置在 MCP 自己的环境中。Claude / Cursor 示例在 `mcp/`，完整契约见 [`docs/MCP_BROWSER.md`](docs/MCP_BROWSER.md)。
 
-### 离线 HTML 导入（稳定演示）
+工程不包含也不应添加：Cookie/localStorage 导出、账号数据采集、代理池、设备指纹或 stealth、滑块/验证码识别、内部 API、反爬绕过、自动打招呼或自动投递。
 
-1. 正常打开 BOSS 直聘职位搜索页，不借助本程序登录或验证。
-2. 在浏览器中保存完整网页 HTML，或复制包含职位卡片的 HTML。
-3. 打开应用“BOSS 职位采集 → 离线 HTML 导入”。
-4. 选择文件或粘贴内容，点击“解析并导入职位”。
-5. 点击“载入演示 HTML”可不访问网站，直接验证 3 个虚构职位的导入流程。
+完整升级、操作与故障排查见 [`docs/BOSS_GUIDE.md`](docs/BOSS_GUIDE.md)；Skill 位于 `.agents/skills/boss-zhipin-search/SKILL.md`。
 
-解析器只保存卡片中存在的字段；没有详情时会标注“未自动抓取详情页”，不会补写职位责任。
-
-### 在线单页入口的真实限制
-
-工程已实现 `POST /api/crawler/boss/search`，但编写时核验的 BOSS `robots.txt` 明确包含：
-
-```text
-User-agent: *
-Disallow: /*?query=*
-Disallow: *?city=*
-```
-
-因此当前在线搜索通常会在 robots 阶段返回 `ROBOTS_DISALLOWED`，且**不会请求目标搜索页**。这是刻意保留的合规行为，不是可以通过加请求头修复的 bug。
-
-工程不包含也不应添加：Cookie/localStorage 导出、账号数据采集、代理池、设备指纹或 stealth、滑块/验证码识别、内部 API、反爬绕过、自动打招呼或自动投递。遇 401、403、429、登录跳转或安全验证立即停止。持久化人工会话不等于获得采集授权。
-
-完整 Skill：`.agents/skills/boss-zhipin-search/SKILL.md`。
-
-## 4. 一条可重复的演示流程
+## 5. 一条可重复的演示流程
 
 1. 首页进入“职位库”。
 2. 打开任意职位，点击“开始匹配分析”。
@@ -154,8 +158,9 @@ Disallow: *?city=*
 5. 点击“加入投递管理”，在投递页更新状态和备注。
 6. 前往“BOSS 职位采集”，载入演示 HTML 并导入。
 7. 再次导入同一 HTML，第二次应全部去重。
+8. 打开“求职 Agent”输入查询目标；无密钥时应返回明确的 `LOCAL_DEMO`，配置密钥后可观察真实工具轨迹。
 
-## 5. 测试与打包
+## 6. 测试与打包
 
 在 IDEA 的 Maven 工具窗口运行 `test`、`package`，或在项目根目录执行（需要本机 Maven）：
 
@@ -165,11 +170,11 @@ mvn package
 java -jar target/ai-job-search-cn.jar
 ```
 
-也可以右键 `JobSearchIntegrationTest` 运行端到端测试。测试使用独立内存 H2，不会污染项目 `data/`。
+也可以右键 `JobSearchIntegrationTest`、`AgentRunApiIntegrationTest` 或 `SpringAiToolCallingIntegrationTest` 运行测试。测试使用独立内存 H2 和本机模拟模型服务，不访问真实 DeepSeek，不污染项目 `data/`。
 
 实测结果见 [`docs/VERIFICATION.md`](docs/VERIFICATION.md)。
 
-## 6. 数据库与重置
+## 7. 数据库与重置
 
 默认 JDBC：
 
@@ -179,7 +184,7 @@ jdbc:h2:file:./data/jobsearch;DB_CLOSE_DELAY=-1
 密码：空（可用 H2_PASSWORD 环境变量设置）
 ```
 
-停止应用后，删除项目根目录 `data/`，下次启动会重新生成演示数据。
+停止应用后，删除项目根目录 `data/`，下次启动会重新生成演示数据。H2 同时保存职位、档案、投递、Agent 任务/步骤/确认单和对话记忆；删除前请先备份。
 
 不需要演示职位时，在 IDEA 环境变量中设置：
 
@@ -189,24 +194,26 @@ SEED_DEMO_DATA=false
 
 这会保留一个待填写的档案模板，但不生成演示职位和投递记录。
 
-## 7. 项目结构
+## 8. 项目结构
 
 ```text
 ai-job-search-cn/
 ├── pom.xml                         # IDEA / Maven 工程入口
 ├── .mvn/                           # 阿里云 Maven 镜像
-├── src/main/java/cn/jobsearch/     # 后端源码
-├── src/main/resources/static/      # 中文前端与 BOSS 演示 HTML
-├── src/test/                       # 单元与端到端测试
+├── src/main/java/cn/jobsearch/     # 后端、Spring AI Agent 与受限工具
+├── src/main/resources/static/      # 中文前端、Agent 工作台与 BOSS 演示 HTML
+├── src/test/                       # 单元、工具链与端到端测试
 ├── .agents/skills/boss-zhipin-search/
 │   ├── SKILL.md                    # BOSS Skill 使用与输出契约
 │   └── references/PARSING.md       # 选择器维护文档
 ├── mcp/                            # Claude / Cursor MCP 配置示例
 ├── docs/
+│   ├── AGENT_GUIDE.md              # Spring AI Agent 使用、权限与排错
 │   ├── BOSS_GUIDE.md               # 两步采集、升级与故障排查
 │   ├── ARCHITECTURE.md             # 架构、线程、信任边界
 │   ├── API.md                      # API 请求响应
 │   ├── MCP_BROWSER.md              # 浏览器协同与 MCP 契约
+│   ├── SPRING_AI_CHANGES.md        # 本次更改/新增文件清单
 │   ├── INTERVIEW.md                # 项目讲解与架构问答
 │   └── VERIFICATION.md             # 实际验证记录
 ├── data/                           # H2 与浏览器会话，运行时生成，不提交
@@ -215,17 +222,21 @@ ai-job-search-cn/
 
 IDEA 交付包只保留国内 Java 应用、中文页面、BOSS Skill、MCP 示例与文档；原上游丹麦招聘站 Skill、LaTeX 模板等迁移参考不属于运行工程，**不是 Java 应用运行依赖**。Java 应用以 `src/`、`application.yml` 和本文档为准。
 
-## 8. 已知边界
+## 9. 已知边界
 
 - 定位为**单用户、本机使用**；没有登录、多租户和权限系统，不应直接暴露到公网。
 - H2 适合本地与演示；多人或生产使用需切换 MySQL/PostgreSQL、增加迁移和备份。
 - 页面 DOM 可能变化，离线解析测试通过不代表 BOSS 线上结构永久有效。
 - AI 输出可能错误，需人工核对；系统不承诺职位真实性或求职结果。
+- 配置 DeepSeek 后，对话、工具结果和必要档案内容可能发送给模型服务；不要输入密钥或无关敏感信息。
 - 未配置真实 DeepSeek 密钥时使用本地演示；真实配置与实网验证结果见验证报告。
-- 当前为同步 Agent 请求，长材料生成需要等待接口完成。
+- 对话式 Agent 已改为后台执行和状态轮询；固定职位分析、材料生成按钮仍是同步接口，长生成需要等待对应请求完成。
+- 默认不连接 BOSS 不等于具备“防封号”能力；显式开启在线功能仍需自行承担网站授权与账号风险。
 
 ## 文档导航
 
+- [Spring AI Agent 使用指南](docs/AGENT_GUIDE.md)
+- [本次更改文件清单](docs/SPRING_AI_CHANGES.md)
 - [BOSS 两步采集与故障排查](docs/BOSS_GUIDE.md)
 - [架构说明](docs/ARCHITECTURE.md)
 - [API 文档](docs/API.md)

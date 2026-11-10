@@ -48,9 +48,28 @@ class BrowserAutomationServiceTest {
     }
 
     @Test
-    void followsVisibleSearchTabWithoutNavigatingAgain() {
+    void disablesBrowserBeforeLaunchOrNetworkAccessByDefault() {
         RobotsTxtService robots = mock(RobotsTxtService.class);
         BrowserAutomationService service = new BrowserAutomationService(new BrowserProperties(), robots,
+                new BossHtmlParser());
+        try {
+            assertThat(service.status().running()).isFalse();
+            assertThat(service.status().message()).contains("默认离线安全模式");
+            assertThatThrownBy(() -> service.start(false))
+                    .isInstanceOfSatisfying(ApiException.class,
+                            ex -> assertThat(ex.getCode()).isEqualTo("BOSS_BROWSER_DISABLED"));
+            verifyNoInteractions(robots);
+        } finally {
+            service.shutdown();
+        }
+    }
+
+    @Test
+    void followsVisibleSearchTabWithoutNavigatingAgain() {
+        RobotsTxtService robots = mock(RobotsTxtService.class);
+        BrowserProperties properties = new BrowserProperties();
+        properties.setEnabled(true);
+        BrowserAutomationService service = new BrowserAutomationService(properties, robots,
                 new BossHtmlParser());
         BrowserContext context = mock(BrowserContext.class);
         Page basePage = mock(Page.class);

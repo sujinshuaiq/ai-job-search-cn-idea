@@ -28,17 +28,17 @@ public class AgentService {
 
     private final JobService jobService;
     private final ProfileService profileService;
-    private final DeepSeekClient deepSeekClient;
+    private final StructuredAiService structuredAiService;
     private final LocalAgentEngine localEngine;
     private final PromptSanitizer sanitizer;
     private final AiProperties properties;
 
     public AgentService(JobService jobService, ProfileService profileService,
-                        DeepSeekClient deepSeekClient, LocalAgentEngine localEngine,
+                        StructuredAiService structuredAiService, LocalAgentEngine localEngine,
                         PromptSanitizer sanitizer, AiProperties properties) {
         this.jobService = jobService;
         this.profileService = profileService;
-        this.deepSeekClient = deepSeekClient;
+        this.structuredAiService = structuredAiService;
         this.localEngine = localEngine;
         this.sanitizer = sanitizer;
         this.properties = properties;
@@ -62,7 +62,7 @@ public class AgentService {
         CandidateProfile profile = profileService.get();
         boolean useAi = properties.isConfigured();
         FitAnalysisResult result = useAi
-                ? deepSeekClient.completeJson(SYSTEM_RULES + "\n匹配分析 JSON 结构：{\"matchScore\":0到100的整数,\"summary\":\"摘要\",\"strengths\":[\"优势\"],\"gaps\":[\"缺口\"]}。评分须谨慎，不能仅按关键词给满分。", prompt(profile, job), FitAnalysisResult.class)
+                ? structuredAiService.completeJson(SYSTEM_RULES + "\n匹配分析 JSON 结构：{\"matchScore\":0到100的整数,\"summary\":\"摘要\",\"strengths\":[\"优势\"],\"gaps\":[\"缺口\"]}。评分须谨慎，不能仅按关键词给满分。", prompt(profile, job), FitAnalysisResult.class)
                 : localEngine.analyze(profile, job);
         validate(result);
         String mode = useAi ? "DEEPSEEK" : "LOCAL_DEMO";
@@ -84,7 +84,7 @@ public class AgentService {
         CandidateProfile profile = profileService.get();
         boolean useAi = properties.isConfigured();
         MaterialResult result = useAi
-                ? deepSeekClient.completeJson(SYSTEM_RULES + "\n求职材料 JSON 结构：{\"tailoredResume\":\"Markdown 定向简历\",\"greeting\":\"不超过 180 字的 BOSS 初次沟通话术\",\"interviewQuestions\":[\"面试题\"] }。简历必须标注各段事实来源，不得创造新经历；面试题 5 到 8 道。", prompt(profile, job), MaterialResult.class)
+                ? structuredAiService.completeJson(SYSTEM_RULES + "\n求职材料 JSON 结构：{\"tailoredResume\":\"Markdown 定向简历\",\"greeting\":\"不超过 180 字的 BOSS 初次沟通话术\",\"interviewQuestions\":[\"面试题\"] }。简历必须标注各段事实来源，不得创造新经历；面试题 5 到 8 道。", prompt(profile, job), MaterialResult.class)
                 : localEngine.materials(profile, job);
         validate(result);
         String mode = useAi ? "DEEPSEEK" : "LOCAL_DEMO";

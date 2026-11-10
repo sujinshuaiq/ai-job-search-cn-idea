@@ -58,7 +58,12 @@ public class BrowserAutomationService {
         });
     }
 
+    public boolean isEnabled() {
+        return properties.isEnabled();
+    }
+
     public BrowserStatusResponse start(Boolean headless) {
+        ensureEnabled();
         return call(() -> {
             ensureContext(headless);
             return buildStatus("浏览器已启动；下一步可打开 BOSS 基础职位页");
@@ -66,6 +71,7 @@ public class BrowserAutomationService {
     }
 
     public BrowserStatusResponse openBoss(boolean jobsPage, Boolean headless) {
+        ensureEnabled();
         return call(() -> {
             ensureContext(headless);
             Page page = requirePage();
@@ -94,6 +100,9 @@ public class BrowserAutomationService {
     }
 
     public BrowserStatusResponse status() {
+        if (!properties.isEnabled()) {
+            return stoppedStatus("默认离线安全模式：BOSS 浏览器自动操作已关闭，不会启动浏览器、刷新或请求 BOSS。请使用离线 HTML 导入或手动录入。");
+        }
         return call(() -> buildStatus(null));
     }
 
@@ -105,6 +114,7 @@ public class BrowserAutomationService {
         if (maxItems < 1 || maxItems > 20) {
             throw ApiException.badRequest("INVALID_MAX_ITEMS", "单次读取条数必须在 1–20 之间");
         }
+        ensureEnabled();
         String defaultCity = city == null ? "" : city.trim();
         return call(() -> {
             Page page = requirePage();
@@ -140,6 +150,14 @@ public class BrowserAutomationService {
             return new CurrentPageJobs(buildStatus("已读取你确认的当前页"), outcome.jobs(), warnings,
                     extraction.html());
         });
+    }
+
+    private void ensureEnabled() {
+        if (!properties.isEnabled()) {
+            throw new ApiException(HttpStatus.PRECONDITION_REQUIRED, "BOSS_BROWSER_DISABLED",
+                    "BOSS 浏览器自动操作默认关闭，未启动浏览器或访问网站。请使用离线 HTML 导入或手动录入；"
+                            + "如你明确了解账号风险并确认有权操作，可设置 BOSS_BROWSER_ENABLED=true 后重启。模拟人工也不能避免封号。");
+        }
     }
 
     public BrowserStatusResponse closeBrowser() {

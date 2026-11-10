@@ -3,7 +3,7 @@ package cn.jobsearch.service.browser;
 import cn.jobsearch.config.AiProperties;
 import cn.jobsearch.dto.BrowserIntentRequest;
 import cn.jobsearch.dto.BrowserIntentResponse;
-import cn.jobsearch.service.agent.DeepSeekClient;
+import cn.jobsearch.service.agent.StructuredAiService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
@@ -15,7 +15,7 @@ import static org.mockito.Mockito.when;
 
 class BossSearchIntentServiceTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final DeepSeekClient deepSeekClient = mock(DeepSeekClient.class);
+    private final StructuredAiService deepSeekClient = mock(StructuredAiService.class);
 
     @Test
     void parsesChineseIntentWithoutAiKey() {

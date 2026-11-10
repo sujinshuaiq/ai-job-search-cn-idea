@@ -11,6 +11,22 @@ server:
 spring:
   application:
     name: ai-job-search-cn
+  ai:
+    openai:
+      base-url: ${app.ai.base-url}
+      # 仅用于让无密钥本地模式完成自动配置；业务层未配置真实密钥时不会调用模型。
+      api-key: ${DEEPSEEK_API_KEY:local-demo-only}
+      chat:
+        completions-path: /chat/completions
+        options:
+          model: ${app.ai.model}
+          temperature: 0.2
+          max-tokens: ${app.ai.max-tokens}
+    chat:
+      memory:
+        repository:
+          jdbc:
+            initialize-schema: embedded
   datasource:
     url: jdbc:h2:file:./data/jobsearch;DB_CLOSE_DELAY=-1
     driver-class-name: org.h2.Driver
@@ -43,13 +59,20 @@ app:
     connect-timeout-ms: 10000
     read-timeout-ms: 120000
     max-tokens: 4096
+  agent:
+    max-tool-calls: ${AGENT_MAX_TOOL_CALLS:8}
+    history-messages: ${AGENT_HISTORY_MESSAGES:24}
+    confirmation-ttl-minutes: ${AGENT_CONFIRMATION_TTL_MINUTES:30}
+    max-goal-chars: ${AGENT_MAX_GOAL_CHARS:2000}
   crawler:
+    online-enabled: ${BOSS_ONLINE_ENABLED:false}
     user-agent: JobSearchCN/1.0 (personal job search; robots.txt aware)
     connect-timeout-ms: 10000
     read-timeout-ms: 20000
     min-interval-ms: 3000
     max-html-chars: 2000000
   browser:
+    enabled: ${BOSS_BROWSER_ENABLED:false}
     profile-dir: ${BOSS_BROWSER_PROFILE:./data/browser-profile}
     headless: ${BOSS_BROWSER_HEADLESS:false}
     channel: ${BOSS_BROWSER_CHANNEL:chrome}

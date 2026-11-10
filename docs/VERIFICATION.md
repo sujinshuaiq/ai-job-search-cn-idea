@@ -1,8 +1,144 @@
 # 实际验证报告
 
-本报告只记录实际执行结果，并明确区分自动化测试、真实本机运行和未验证项。BOSS 基础页打开成功不等于登录后的职位采集成功。
+本报告只记录实际执行结果，并明确区分自动化测试、真实本机运行和未验证项。当前默认不连接 BOSS；本地模拟模型、真实 JAR 和真实 Chrome 验证都不等于 DeepSeek 实网或 BOSS 登录采集验收。
 
-## 当前修复版：2026-11-08 两步浏览器协同
+## 当前修正版：2026-11-10 后台 Agent 与默认离线
+
+### 修正内容
+
+- Agent 配置模型后先返回 `RUNNING`，模型和工具在核心 2、最大 4、队列 32 的后台执行器中运行；前端每约 1.2 秒轮询，终态停止。无密钥本地任务仍立即完成。
+- 默认 `BOSS_BROWSER_ENABLED=false`、`BOSS_ONLINE_ENABLED=false`。Web、Agent、MCP 共用服务端禁用边界，默认不启动浏览器、不检查 BOSS robots、不请求 BOSS。
+- 默认页面为离线 HTML 导入；静态 CSS/JS 增加版本参数。可选功能显式开启后仍保留原 robots、人工确认和单页上限，但不宣称能防止封号。
+- 补齐 MCP 独立 JVM 对 `BOSS_BROWSER_ENABLED` 的读取，避免文档可开启而进程配置始终为 false 的不一致。
+
+### 完整构建与回归
+
+当前源码实际执行 `mvn clean package`：
+
+- `BUILD SUCCESS`，退出码 `0`，耗时约 **19.52 秒**。
+- **43 项默认测试全部通过**：`Failures: 0`、`Errors: 0`、`Skipped: 0`。工作区仍含已标记从交付包排除的旧 `DeepSeekClientTest` 1 项；最终 ZIP 独立重建数量单独记录。
+- 可执行 JAR：`target/ai-job-search-cn.jar`，大小 **266,959,201 bytes**。
+- `node --check src/main/resources/static/js/app.js` 与 `node --check src/main/resources/static/js/agent.js` 均退出 `0`。
+- 新增覆盖：后台 RUNNING → COMPLETED、默认无 BOSS 工具、在线/浏览器网络前禁用、MCP 独立配置开关。原 Spring AI 工具回调、离线导入、去重和确认单测试继续通过。
+
+### 真实 Chrome 页面交互：2 / 2 通过
+
+额外执行 `mvn -Dtest=AgentFrontendBrowserIT test`，退出码 `0`，2 项测试全部通过：
+
+1. 从首页真实点击左侧“求职 Agent”，示例可填，提交本地任务后显示完成和 2 条轨迹；再进入采集页确认默认显示离线面板、浏览器面板隐藏，返回 Agent 后检查 390px 移动布局无横向溢出，未捕获 `pageerror`。
+2. 用浏览器路由模拟创建接口返回 RUNNING、查询接口返回 COMPLETED，真实页面从“执行中”自动轮询到“已完成”，至少发生一次状态 GET，未捕获 `pageerror`。
+
+截图已在 `target/agent-workbench.png` 和 `target/agent-workbench-mobile.png` 生成并实际查看。第二项是前端轮询交互验证，模型协议和真实后台执行由下面的 JAR 冒烟独立验证。
+
+### 真实 JAR 冒烟：12 / 12 通过
+
+启动最终 JAR，使用独立内存 H2、随机端口和本机假 OpenAI 服务。没有访问真实 DeepSeek 或 BOSS：
+
+- 首页默认离线和版本化静态资源正常；浏览器状态返回默认离线说明。
+- `open` 返回 HTTP 428 / `BOSS_BROWSER_DISABLED`；`search` 返回 HTTP 428 / `BOSS_ONLINE_DISABLED`。
+- 离线演示 HTML 解析 3、新增 3、重复 0。
+- 假模型第一次响应故意延迟 3 秒，Agent POST 实测约 **0.062 秒**返回 `RUNNING`，没有同步等待 3 秒。
+- 运行中取消返回 `AGENT_STILL_RUNNING`，未伪报中断成功。
+- GET 轮询最终为 `COMPLETED`，`search_saved_jobs=SUCCESS`，数据库步骤真实存在。
+- 假模型共收到 2 次请求；第二次 JSON 消息角色包含 `system`、`user`、`assistant`、`tool`，并含 `call_search_1`，证明工具结果回传。
+- 第一次模型请求不包含 `open_boss_for_manual_search`，验证默认 BOSS 工具未注册。
+
+结构化结果保存在本机 `target/async-offline-jar-smoke.json`。首轮冒烟的文本断言曾受 JSON 空格和 chunked 请求体影响，修正测试客户端的 JSON/chunked 解析后复验通过；应用链路本身已完成并返回正确工具结果。
+
+### 真实 MCP STDIO 冒烟：6 / 6 通过
+
+以最终 JAR 的 `--mcp-stdio` 独立启动，未设置浏览器启用开关：
+
+- initialize、5 个工具 Schema、status、start、close、shutdown、exit 均完成，进程退出码 0。
+- stdout 共 6 行响应，6/6 均为合法 JSON-RPC，无普通日志混入。
+- status 返回 `browser.running=false` 和默认离线说明。
+- start 返回 `BOSS_BROWSER_DISABLED`，没有启动浏览器；close 和 shutdown 正常。
+
+结构化结果保存在本机 `target/mcp-offline-smoke.json`。
+
+### 最终交付包复验
+
+- 完整 IDEA 源码包按白名单重新生成，共 **141 个文件**；相对上一版基线 `target/pre-async-offline-idea-baseline.zip` 的变更包共 **33 个文件**。基线 ZIP 只用于比较，不进入交付包。
+- 将完整 ZIP 解压到独立的 `target/async-offline-zip-check-20261110`，实际执行 `mvn clean package`：退出码 `0`、`BUILD SUCCESS`，**42 项默认测试全部通过**。工作区的 43 项包含已从交付 ZIP 排除的旧 `DeepSeekClientTest` 1 项，因此数量相差 1 是预期结果。
+- 独立重建耗时约 **19.48 秒**。由该独立构建复制出的最终 `ai-job-search-cn.jar` 大小为 **266,954,768 bytes**，SHA-256 为 `fcd09758a710600803761226f0e69e42f77e5bb00b1e5d13e71cfc76d66e3dbb`；工作区根目录 JAR 与工程 `target/` JAR 的大小和哈希一致。
+- 最终 JAR 共 367 个条目，CRC 全量检查无错误，不含旧 `cn/jobsearch/service/agent/DeepSeekClient.class`。复制后的最终 JAR 再次执行上述真实 JAR 冒烟 **12 / 12** 和 MCP STDIO 冒烟 **6 / 6**，全部通过；Agent POST 仍实测约 **0.062 秒**返回 `RUNNING`。
+- 两个最终 ZIP 均通过全量 CRC、禁止项、通用真实密钥和私钥标记扫描，不带入 `target/`、运行时数据、浏览器会话或密钥；`env.example` 仅含明确的公开占位符。结构化结果保存在本机 `target/final-async-offline-package-report.json`。
+
+### 当前未验证项
+
+- 当前执行环境没有可用的真实 `DEEPSEEK_API_KEY`，**未进行真实 DeepSeek 计费调用**，未验收用户账号下 `deepseek-flash` 的权限、模型质量和真实工具规划。测试密钥仅为本机 `test-secret`。
+- 本次没有扫码登录 BOSS、没有请求 BOSS 搜索页、没有读取真实线上职位卡片。默认禁用是刻意行为，不能把离线测试描述成在线采集成功。
+- 未验证显式开启后的真实账号风控结果；任何实现都不承诺“避免封号”。
+- 运行中的可信强制取消、应用重启后的后台任务恢复和多用户部署仍未实现；当前定位为单用户本机应用。
+
+## 历史升级版：2026-11-09 Spring AI Agent
+
+### 完整构建与回归
+
+当前源码实际执行 `mvn clean package`：
+
+- `BUILD SUCCESS`，退出码 `0`。
+- **38 项默认测试全部通过**：`Failures: 0`、`Errors: 0`、`Skipped: 0`。
+- 总耗时 `22.858 s`，完成时间 `2026-11-09T16:43:15+08:00`。
+- 可执行 JAR：`target/ai-job-search-cn.jar`，大小 **266,955,511 bytes**。
+- `node --check src/main/resources/static/js/app.js` 与 `node --check src/main/resources/static/js/agent.js` 均退出 `0`；CSS 花括号计数平衡。
+- 原始构建日志保存在本机 `target/spring-ai-build.log`，不进入源码 ZIP。
+
+新增回归覆盖：`StructuredAiServiceTest` 3 项、`SpringAiToolCallingIntegrationTest` 1 项、`AgentExecutionGuardTest` 1 项、`AgentToolSafetyTest` 2 项、`AgentConfirmationServiceIntegrationTest` 3 项、`AgentRunApiIntegrationTest` 2 项。已有 BOSS、MCP、离线导入、去重和固定本地分析测试仍通过。
+
+### Spring AI 工具链实测
+
+`SpringAiToolCallingIntegrationTest` 使用本机 JDK HTTP 服务模拟 OpenAI 兼容响应，不访问真实 DeepSeek：
+
+1. 第一次模型响应要求调用 `search_saved_jobs`。
+2. Spring AI 实际执行受控 Java 工具并查询内存 H2 中的 1 个职位。
+3. 第二次 HTTP 请求包含 `role=tool` 和对应 `tool_call_id`。
+4. 最终任务为 `COMPLETED`，`agent_step` 中 `search_saved_jobs=SUCCESS`，摘要含真实数量 1。
+5. 模拟服务收到 `Authorization: Bearer test-secret`；该值仅为测试常量。
+
+这证明当前 Spring AI 自动配置、OpenAI 协议、工具回调、ToolContext、任务记录和第二次模型请求链路可运行，不等于真实模型质量或实网密钥验收。
+
+### 真实 JAR 冒烟：10 / 10 通过
+
+使用更新后的真实 JAR、独立内存 H2、端口 `18085`、无 DeepSeek 密钥启动，原始结果保存在本机 `target/spring-ai-smoke-results.json`：
+
+- Agent 页面、脚本、样式均可访问。
+- 模型状态为 `LOCAL_DEMO`。
+- POST Agent 任务返回 `COMPLETED`，明确未调用模型和工具；GET 可读取持久化步骤。
+- 非等待任务不能直接确认，返回 `AGENT_NOT_WAITING_CONFIRMATION`。
+- 空目标返回 `VALIDATION_ERROR`。
+- 手动职位创建返回 201；固定分析仍返回 `LOCAL_DEMO`。
+
+### 真实 Chrome 页面交互：1 / 1 通过
+
+额外执行 `mvn -Dtest=AgentFrontendBrowserIT test`，完成时间 `2026-11-09T16:48:39+08:00`：
+
+- Playwright 使用本机 Chrome 打开真实随机端口 Web 应用，等待 Agent 视图并完成示例按钮点击。
+- 实际提交本地 Agent 任务，页面显示“已完成”、本地说明和 2 条执行轨迹；等待人工确认卡保持隐藏。
+- 未捕获前端 `pageerror`。
+- 切换 390px 视口后 `document.documentElement.scrollWidth <= 390`，无横向文档溢出。
+- 已生成并实际查看 `docs/agent-workbench.png`（1280 × 1134）和 `docs/agent-workbench-mobile.png`（390 × 1809）。
+
+该 IT 使用本机 Chrome，因此不纳入无浏览器环境的默认 38 项测试；源码中提供，具备 Chrome 时可单独复验。
+
+### IDEA 源码 ZIP 与变更包复验
+
+最终按上一版白名单重新生成 `ai-job-search-cn-idea.zip` 和 `ai-job-search-spring-ai-changes.zip`：
+
+- 完整工程 **138 个文件**，变更文件包 **53 个文件**；仅含国内 Java 工程、BOSS Skill、MCP 示例、测试和文档，不含上游丹麦招聘站脚本。
+- 完整包不再包含旧 `DeepSeekClient.java` 和 `DeepSeekClientTest.java`；变更清单说明覆盖旧版时需要删除的两个文件。
+- 两个 ZIP 均通过全量 CRC 检查；无 `target/`、`data/`、`.git/`、`.idea/`、缓存、日志、`.env`、H2 或浏览器会话；通用真实密钥和私钥标记扫描未命中。
+- 将完整 ZIP 解压到独立 `target/spring-ai-zip-check-final`，实际执行 `mvn clean package`：退出码 `0`、`BUILD SUCCESS`，**37 项默认测试全部通过**（移除旧手工客户端测试 1 项，因此与工作区含旧文件时的 38 项不同）。
+- 独立构建总耗时 `19.136 s`，完成时间 `2026-11-09T16:54:56+08:00`；最终交付 JAR 为 `ai-job-search-cn.jar`，大小 **266,951,078 bytes**。
+- 原始日志为 `target/spring-ai-zip-check-final-build.log`，结构化结果为 `target/spring-ai-zip-final-report.json`，均不进入源码 ZIP。
+
+### 本次未验证项
+
+- 当前执行环境的 `DEEPSEEK_API_KEY` 不存在，**没有对升级版进行真实 DeepSeek 计费调用**，未验收账号下的 `deepseek-flash` 可用性、结构化输出质量和真实工具规划。历史旧实例的意图解析结果不能替代新版验收。
+- 本次没有扫码登录 BOSS、没有读取真实线上职位卡片，也没有重新进行 MCP 真实浏览器冒烟；既有 MCP 协议 3 项测试通过。登录后的当前页 DOM、页面持续刷新和线上风控仍需用户按两步流程人工验收。
+- 未实现或绕过自动填词、自动搜索、自动翻页、Cookie 导出、验证码/风控绕过和自动投递。
+
+## 历史修复版：2026-11-08 两步浏览器协同
 
 ### 编译与自动化测试
 

@@ -6,7 +6,7 @@
   <meta name="description" content="基于 DeepSeek 的国内求职 Agent，支持职位采集、匹配分析、求职材料和投递跟踪。">
   <title>职航 JobPilot · 国内 AI 求职 Agent</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/css/app.css">
+  <link rel="stylesheet" href="/css/app.css?v=20261109-async-offline">
 </head>
 <body>
 <div class="app-shell">
@@ -19,6 +19,10 @@
       <button class="nav-item active" data-view="dashboard">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h6V4H4v9Zm0 7h6v-4H4v4Zm10 0h6v-9h-6v9Zm0-16v4h6V4h-6Z"/></svg>
         <span>求职仪表盘</span>
+      </button>
+      <button class="nav-item" data-view="agent">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a3 3 0 0 1 3 3v1h3a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3V5a3 3 0 0 1 3-3Zm0 2a1 1 0 0 0-1 1v1h2V5a1 1 0 0 0-1-1ZM6 8v10h12V8H6Zm2 3a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Zm8 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3ZM9 16h6v2H9v-2Z"/></svg>
+        <span>求职 Agent</span><span class="nav-agent-badge">AI</span>
       </button>
       <button class="nav-item" data-view="jobs">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6V4h6v2h5v14H4V6h5Zm2 0h2V5h-2v1Zm-5 2v10h12V8H6Z"/></svg>
@@ -99,6 +103,49 @@
         <div class="demo-notice"><span>提示</span> 初始职位、公司和档案均为明确标识的虚构演示数据，请在“我的求职档案”中替换为真实信息。</div>
       </section>
 
+      <section class="view" id="view-agent" hidden>
+        <div class="section-heading"><div><span class="eyebrow dark">SPRING AI · TOOL-CALLING AGENT</span><h1>求职 Agent</h1><p>用自然语言安排已有职位查询、匹配分析和材料生成；任务在后台执行并自动更新。</p></div><button class="button button-secondary" id="agent-new" type="button">＋ 新对话</button></div>
+        <div class="agent-layout">
+          <div class="agent-main">
+            <form class="panel agent-compose" id="agent-goal-form">
+              <h3>这次想完成什么？</h3>
+              <p class="agent-intro">点击后立即创建后台任务，无需等待模型请求结束。已有职位直接查询，不需要重新采集。</p>
+              <label for="agent-goal" class="desktop-only">求职目标</label>
+              <textarea id="agent-goal" required maxlength="2000" rows="5" placeholder="例如：帮我找职位库里杭州的 Java 岗位，分析最匹配的 3 个并说明理由"></textarea>
+              <div class="agent-examples" aria-label="目标示例">
+                <button class="agent-example" type="button" data-agent-example="查询职位库里杭州的 Java 后端岗位，按匹配分排序，告诉我最匹配的 3 个及理由">分析已有职位</button>
+                <button class="agent-example" type="button" data-agent-example="我想补充杭州 Java 后端职位，请说明如何使用离线 HTML 导入，不要连接 BOSS 网站">离线导入说明</button>
+                <button class="agent-example" type="button" data-agent-example="根据我的真实求职档案，为职位 ID 1 生成定向简历和初次沟通话术">生成定向材料</button>
+              </div>
+              <div class="form-actions"><button class="button button-primary" id="agent-start" type="submit">开始执行任务</button><span class="form-hint">后台执行 · 自动刷新结果 · 无密钥时明确返回本地演示</span></div>
+            </form>
+
+            <article class="panel agent-run-card" id="agent-run-card" hidden>
+              <div class="agent-run-head"><span class="agent-status" id="agent-run-status">执行中</span><strong>任务结果</strong><span class="agent-run-meta" id="agent-run-meta">—</span><div class="agent-toolbar"><button class="mini-button" id="agent-refresh" type="button">刷新结果</button><button class="mini-button" id="agent-cancel" type="button" hidden>取消任务</button></div></div>
+              <div class="agent-answer" id="agent-answer"></div>
+            </article>
+
+            <article class="panel agent-confirmation" id="agent-confirmation" hidden>
+              <h3>需要你确认后才能读取 BOSS 当前页</h3>
+              <p id="agent-confirm-summary"></p>
+              <div class="manual-action-note">此流程仅在你主动开启浏览器功能后可用。模拟人工操作仍可能触发网站风控，不能保证账号安全。</div>
+              <div class="form-actions"><button class="button button-primary" id="agent-confirm" type="button">确认当前页并采集一次</button><button class="button button-danger" id="agent-reject" type="button">拒绝采集</button></div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-head"><div><h3>执行轨迹</h3><p>显示实际步骤和工具摘要，不把模型回答当作执行凭证</p></div></div>
+              <div class="agent-step-list" id="agent-steps"><div class="empty-state compact">开始任务后，这里会展示真实工具调用和人工确认记录。</div></div>
+            </article>
+          </div>
+
+          <aside class="agent-side">
+            <article class="panel agent-guide"><h3>推荐：直接使用已有职位</h3><ol><li>先在“离线 HTML 导入”或“手动录入”中补充职位。</li><li>再告诉 Agent“查询杭州的 Java 岗位”或“分析职位 ID 1”，结果会自动出现在任务卡片中。</li></ol><p class="small-text">查询、匹配分析和材料生成不需要打开 BOSS，也不应触发浏览器。</p><button class="text-button" data-view="jobs" type="button">查看职位库 →</button></article>
+            <article class="panel agent-privacy"><strong>数据与权限边界</strong>对话记忆最多保留最近 24 条并保存在本机 H2。配置 DeepSeek 后，目标、工具结果和必要档案内容会发送至模型服务；请勿填写密钥或无关敏感信息。Agent 不修改档案、不自动投递、不自动发送沟通消息。</article>
+            <article class="panel agent-guide"><h3>默认不连接 BOSS</h3><p class="small-text">在线搜索和浏览器自动操作均已默认关闭，Agent 也不会获得 BOSS 工具。这样处理不是“防封号”，而是默认不执行可能带来账号风险的在线自动操作。</p><button class="text-button" data-view="crawler" type="button">打开离线导入 →</button></article>
+          </aside>
+        </div>
+      </section>
+
       <section class="view" id="view-jobs" hidden>
         <div class="section-heading"><div><span class="eyebrow dark">OPPORTUNITY PIPELINE</span><h1>职位库</h1><p>统一管理演示、手动录入和 BOSS 导入职位。</p></div><button class="button button-primary" data-action="manual-job">＋ 新增职位</button></div>
         <div class="filter-bar">
@@ -113,16 +160,16 @@
       </section>
 
       <section class="view" id="view-crawler" hidden>
-        <div class="section-heading"><div><span class="eyebrow dark">COMPLIANT JOB IMPORT</span><h1>BOSS 职位采集</h1><p>解析真实页面数据，入库前自动清洗与去重。</p></div></div>
-        <div class="compliance-banner"><div class="banner-icon">✓</div><div><strong>真人协同，不绕过网站限制</strong><p>AI 可解析意图、打开基础页和读取你确认的当前页；扫码、验证、搜索与翻页由你手动完成。持久会话不等于采集授权。</p></div><span class="banner-tag">MCP + Skill 随工程提供</span></div>
+        <div class="section-heading"><div><span class="eyebrow dark">LOCAL JOB IMPORT</span><h1>职位导入</h1><p>默认只在本机解析 HTML 或保存手动录入，入库前自动清洗与去重。</p></div></div>
+        <div class="compliance-banner"><div class="banner-icon">✓</div><div><strong>默认离线安全模式</strong><p>不会自动打开、刷新或请求 BOSS。在线搜索与浏览器协同均默认关闭；模拟人工也不能避免封号，因此默认推荐离线 HTML 导入和手动录入。</p></div><span class="banner-tag">默认不连接 BOSS</span></div>
         <div class="crawler-tabs" role="tablist">
-          <button class="crawler-tab active" data-crawler-tab="browser">浏览器协同 + MCP <span>新</span></button>
-          <button class="crawler-tab" data-crawler-tab="online">在线单页采集</button>
-          <button class="crawler-tab" data-crawler-tab="offline">离线 HTML 导入</button>
+          <button class="crawler-tab" data-crawler-tab="browser">浏览器协同 + MCP <span>默认关闭</span></button>
+          <button class="crawler-tab" data-crawler-tab="online">在线单页采集（默认关闭）</button>
+          <button class="crawler-tab active" data-crawler-tab="offline">离线 HTML 导入</button>
           <button class="crawler-tab" data-crawler-tab="manual">手动录入</button>
         </div>
 
-        <div class="crawler-panel" id="crawler-browser">
+        <div class="crawler-panel" id="crawler-browser" hidden>
           <div class="browser-flow">
             <article class="panel form-panel browser-step">
               <div class="panel-head"><div class="step-title"><span class="step-number">1</span><div><h3>输入岗位，打开 BOSS</h3><p>自然语言可一键解析并打开；也可直接修改表单后打开。重复打开不会清空当前搜索页。</p></div></div><span class="safe-label">两步完成</span></div>
@@ -165,7 +212,7 @@
         </div>
 
         <div class="crawler-panel" id="crawler-online" hidden>
-          <div class="panel form-panel"><div class="panel-head"><div><h3>公开搜索页 · 单页模式</h3><p>robots 拒绝时不会请求目标页，失败原因会原样展示。</p></div></div>
+          <div class="panel form-panel"><div class="panel-head"><div><h3>公开搜索页 · 默认关闭</h3><p>默认在服务端直接拒绝，不检查 robots、不请求 BOSS。只有显式设置 BOSS_ONLINE_ENABLED=true 并重启才会进入原有 robots 检查流程。</p></div></div>
             <form id="boss-online-form">
               <div class="form-grid two">
                 <label>职位关键词<input name="query" required maxlength="100" value="Java 后端" placeholder="例如：Java 后端"></label>
@@ -173,12 +220,13 @@
                 <label>城市编码<input name="cityCode" required pattern="\d{6,12}" value="101210100"></label>
                 <label>页码（1–3）<input name="page" type="number" min="1" max="3" value="1" required></label>
               </div>
-              <div class="form-actions"><button class="button button-primary" type="submit">检查权限并开始采集</button><span class="form-hint">单页、低频、无自动重试</span></div>
+              <div class="manual-action-note">开启在线功能不代表获得网站授权，也不能避免账号风控或封号。默认请使用离线 HTML 导入。</div>
+              <div class="form-actions"><button class="button button-primary" type="submit">检查权限并开始采集</button><span class="form-hint">默认返回 BOSS_ONLINE_DISABLED</span></div>
             </form>
           </div>
         </div>
 
-        <div class="crawler-panel" id="crawler-offline" hidden>
+        <div class="crawler-panel" id="crawler-offline">
           <div class="panel form-panel"><div class="panel-head"><div><h3>从浏览器保存的页面导入</h3><p>在 BOSS 正常浏览职位列表后保存完整网页 HTML，粘贴到下方。文件只在本机解析。</p></div><span class="safe-label">无需账号或 Cookie</span></div>
             <form id="boss-import-form">
               <div class="form-grid two"><label>默认城市（卡片缺地点时使用）<input name="city" maxlength="80" value="杭州"></label><label class="file-field">从本地读取 .html 文件<input type="file" id="boss-html-file" accept=".html,.htm,.txt"><span>选择文件（≤ 2 MB）</span></label></div>
@@ -254,6 +302,7 @@
 </div>
 <div class="toast-region" id="toast-region" aria-live="polite"></div>
 <div class="top-progress" id="top-progress" hidden></div>
-<script src="/js/app.js" defer></script>
+<script src="/js/app.js?v=20261109-async-offline" defer></script>
+<script src="/js/agent.js?v=20261109-async-offline" defer></script>
 </body>
 </html>

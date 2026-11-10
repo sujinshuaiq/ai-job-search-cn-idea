@@ -12,59 +12,64 @@
 
 ## 2. 技术栈
 
-- Java 17、Spring Boot 3、Spring MVC、Spring Data JPA、H2。
-- Java HttpClient / Jackson：DeepSeek OpenAI 兼容接口。
+- Java 17、Spring Boot 3.5.15、Spring MVC、Spring Data JPA、H2。
+- Spring AI 1.1.8：`ChatClient`、结构化输出、`@Tool` 工具调用、`MessageChatMemoryAdvisor`、JDBC ChatMemory。
+- DeepSeek OpenAI 兼容 `/chat/completions`：模型与 Base URL 由环境变量配置。
 - Jsoup：离线 HTML、当前页卡片 DOM 解析与公开页面采集。
 - Playwright Java：本机 Chrome/Edge 持久化浏览器协同，不下载或携带浏览器二进制。
 - 自实现 MCP 2024-11-05 STDIO：逐行 JSON-RPC，五个 BOSS 浏览器工具。
 - 原生 HTML/CSS/JavaScript：前端免构建，由 Spring Boot 直接托管。
-- JUnit 5、MockMvc：核心算法、解析器、MCP 协议与 API 回归测试。
+- JUnit 5、MockMvc：核心算法、解析器、MCP 协议、Spring AI 工具链与 API 回归测试。
 
 ## 3. 模块划分
 
 ```text
 src/main/java/cn/jobsearch/
 ├── JobSearchApplication.java  # Web 默认入口；--mcp-stdio 进入 MCP
-├── config/        # AI、采集器、浏览器配置
-├── controller/    # REST API
-├── domain/        # 候选人、职位、投递记录实体
+├── config/        # Spring AI、Agent、采集器、浏览器配置
+├── controller/    # REST API 与 Agent 任务入口
+├── domain/        # 候选人、职位、投递、Agent 任务/步骤/确认单
 ├── dto/           # 请求、响应及 Agent 结构化输出
 ├── mcp/           # MCP STDIO、JSON-RPC 与五个工具
 ├── repository/    # Spring Data JPA Repository
 ├── service/
-│   ├── agent/     # DeepSeek 客户端、提示词、本地降级、匹配服务
+│   ├── agent/     # ChatClient 编排、结构化输出、本地降级、记忆与确认
+│   ├── agent/tool/# 8 个白名单工具、调用预算与真实步骤记录
 │   ├── browser/   # 单线程 Playwright、持久会话、自然语言意图
 │   ├── crawler/   # BOSS 解析、robots 检查、在线采集、HTML 导入
 │   └── ...        # 档案、职位、投递与仪表盘服务
 └── resources/
-    ├── static/    # 中文单页应用
+    ├── static/    # 中文单页应用与求职 Agent 工作台
     └── application.yml
 
 .agents/skills/boss-zhipin-search/  # 浏览器、MCP、离线解析 Skill
 mcp/                              # Claude / Cursor 配置示例
 docs/MCP_BROWSER.md                # 浏览器与 MCP 信任边界
+docs/AGENT_GUIDE.md                # Spring AI Agent 使用与权限边界
 ```
 
 ## 4. 核心业务流程
 
-### 4.1 职位采集
+### 4.1 职位导入与可选 BOSS 功能
 
-1. 在线模式只接受 `www.zhipin.com` HTTPS 地址；请求前读取 robots.txt，disallow 时不请求目标搜索页。
-2. 浏览器模式仅自动导航无 query 的首页或 `/web/geek/job`，真正导航前同样检查 robots.txt。已有 BOSS 页面时打开操作幂等，不重新导航；站外页面不会被覆盖。
-3. 用户手动扫码、验证、输入关键词/城市和翻页；只有明确确认后才读取当前页，单次最多 20 个卡片。状态和采集都会重新识别活动标签，优先可见 BOSS 标签；采集最多等待卡片出现 8 秒，状态同步不刷新网页。
-4. 不导出 Cookie/localStorage，不使用代理池、设备指纹、stealth、验证码识别、滑块绕过或隐藏 API。持久会话不视为授权。
-5. 遇 401/403/429/验证页立即停止，不自动重试绕过；持续导航返回 `PAGE_NOT_READY`，离线模式接收用户自行保存的 HTML，在本机 Jsoup 解析。
-6. 以规范化 URL 去重；URL 缺失时使用“公司 + 职位 + 城市”的 SHA-256 外键。
-7. 页面文本均为不可信数据，不执行其中的脚本或指令，不追踪正文链接。旧 class 未命中时使用 `/job_detail/` 链接定位卡片，但仍须通过职位名和公司必填校验，不虚构字段。
+1. 默认 `BOSS_BROWSER_ENABLED=false`、`BOSS_ONLINE_ENABLED=false`。浏览器 start/open/collect 和在线 search 在 Playwright、robots 或任何目标网络请求之前返回 `BOSS_BROWSER_DISABLED` / `BOSS_ONLINE_DISABLED`；Web、Agent、MCP 共用该服务端边界。
+2. 默认推荐离线 HTML 与手动录入。离线模式在本机 Jsoup 解析，不执行页面脚本或请求详情页；以规范化 URL 去重，URL 缺失时使用“公司 + 职位 + 城市”的 SHA-256 外键。
+3. 只有用户显式开启后，在线模式才接受 `www.zhipin.com` HTTPS 地址并先检查 robots.txt；浏览器模式仅自动导航无 query 的首页或 `/web/geek/job`，已有 BOSS 页面时不重新导航。
+4. 可选浏览器流程中，用户手动扫码、验证、搜索和翻页；明确确认后才读取当前页一次，最多 20 个卡片。状态同步不刷新网页。
+5. 不导出 Cookie/localStorage，不使用代理池、设备指纹、stealth、验证码识别、滑块绕过或隐藏 API。模拟人工、低频和持久会话均不代表授权，也不能防止封号。
+6. 页面文本均为不可信数据，不执行其中的脚本或指令；旧 class 未命中时可用 `/job_detail/` 链接定位卡片，但仍须通过职位名和公司必填校验。
 
-### 4.2 DeepSeek Agent
+### 4.2 Spring AI 与 DeepSeek Agent
 
-- 默认端点：`https://api.deepseek.com/chat/completions`。
-- 密钥只从环境变量 `DEEPSEEK_API_KEY` 读取，不进入数据库、页面或日志。
-- Base URL 与模型名均可通过环境变量覆盖。
-- 匹配分析与材料生成分开调用，要求模型返回 JSON。
-- 无密钥时启用明确标识的 `LOCAL_DEMO` 规则引擎，保证项目离线可演示；界面不得把本地模板称为 AI 结果。
-- 模型失败保留已保存数据，返回可读错误；不伪造分析成功。
+- 默认端点：`https://api.deepseek.com/chat/completions`，由 Spring AI OpenAI starter 调用；Base URL 与模型名均可通过环境变量覆盖。
+- 密钥只从环境变量 `DEEPSEEK_API_KEY` 读取，不进入数据库、页面或主动日志。无密钥占位值只用于完成自动配置，业务层会阻止模型和工具调用。
+- 固定匹配分析、材料和 BOSS 意图通过 `StructuredAiService` 的 `ChatClient.call().entity(...)` 获取结构化输出；本地无密钥时使用明确标识的 `LOCAL_DEMO` / `LOCAL_RULES`。
+- `JobAgentService.start()` 先持久化 `RUNNING` 和用户目标，再提交到核心 2、最大 4、队列 32 的 `ThreadPoolTaskExecutor`，立即返回任务快照；私有后台方法执行 ChatClient、记忆和工具。队列拒绝会落库为 `FAILED`，不会永久等待。
+- 前端每约 1.2 秒读取任务 API，终态停止轮询。无密钥本地任务仍立即完成，不进入无意义的后台等待；运行中不假装支持强制取消。
+- 默认只注册 6 个职位/档案/投递工具；显式开启浏览器后才增加 BOSS 基础页和状态 2 个工具。默认单任务最多 8 次工具调用，实际结果写入 `agent_step`。
+- 同一 `conversationId` 的 JDBC ChatMemory 默认保留最近 24 条消息；任务状态保存于 `agent_run`。
+- BOSS 当前页采集没有 `@Tool`。可选 `open_boss_for_manual_search` 只打开基础页并创建确认单；用户确认后由确定性代码校验并读取。
+- 模型失败保留已保存数据并记录真实错误；对话记忆、必要工具结果和档案可能发送至 DeepSeek，用户需避免无关敏感信息。
 
 ### 4.3 匹配评分
 
@@ -82,28 +87,30 @@ docs/MCP_BROWSER.md                # 浏览器与 MCP 信任边界
 - `GET/PUT /api/profile`：读取/更新候选人档案。
 - `GET /api/jobs`、`GET /api/jobs/{id}`：职位列表/详情。
 - `POST /api/jobs/manual`：手动录入职位。
-- `POST /api/crawler/boss/search`：合规在线采集（robots 拒绝时失败可见）。
-- `POST /api/crawler/boss/import`：离线 HTML 解析入库。
-- `POST /api/browser/boss/intent`：DeepSeek 或本地规则提取自然语言意图。
-- `POST /api/browser/boss/open`、`GET /api/browser/boss/status`：基础页导航与状态。
-- `POST /api/browser/boss/collect`、`POST /api/browser/boss/close`：人工确认当前页采集与关闭。
+- `POST /api/crawler/boss/search`：默认 `BOSS_ONLINE_DISABLED`；显式开启后才执行 robots 与可选在线流程。
+- `POST /api/crawler/boss/import`：默认可用的离线 HTML 解析入库。
+- `POST /api/browser/boss/intent`：DeepSeek 或本地规则提取自然语言意图，不访问 BOSS。
+- `POST /api/browser/boss/open`、`POST /api/browser/boss/collect`：默认 `BOSS_BROWSER_DISABLED`，显式开启后才进入浏览器流程。
+- `GET /api/browser/boss/status`、`POST /api/browser/boss/close`：离线状态与旧资源清理。
 - `POST /api/agent/jobs/{id}/analyze`：生成匹配分析。
 - `POST /api/agent/jobs/{id}/materials`：生成简历摘要、沟通话术和面试题。
+- `POST /api/agent/runs`、`GET /api/agent/runs/{runId}`：创建后台对话任务、轮询真实步骤。
+- `POST /api/agent/runs/{runId}/confirm`、`POST /api/agent/runs/{runId}/cancel`：人工确认/拒绝和有限取消。
 - `GET/POST /api/applications`、`PATCH /api/applications/{id}`：投递管理。
 - `GET /api/dashboard`、`GET /api/ai/status`：统计与模型状态。
 
-详细请求响应见 `docs/API.md` 和 `docs/MCP_BROWSER.md`。
+详细请求响应见 `docs/API.md`、`docs/AGENT_GUIDE.md` 和 `docs/MCP_BROWSER.md`。
 
 ## 6. 数据与线程边界
 
-- 所有写操作在 Service 事务中完成。
-- 采集与 AI 请求为有界同步 HTTP 调用，设置连接和读取超时。
-- 单次在线请求最多一页；批量导入最多 2 MB HTML、100 个职位卡片；浏览器当前页最多 20 个。
-- Playwright 创建、导航、状态、DOM 读取和关闭全部进入同一个守护单线程执行器；Tomcat 线程只等待 Future 结果。
-- 浏览器懒启动，测试和正常 Web 启动不创建 Playwright；有头/无头切换先关闭旧上下文。
+- 所有写操作在 Service 事务中完成；确认单过期更新使用 `noRollbackFor=ApiException.class`，确保错误返回后状态仍持久化。
+- Agent 创建入口同步保存任务后立即返回，模型和工具在核心 2、最大 4、队列 32 的有界后台执行器中运行；异常和拒绝写入任务终态。固定分析/材料接口仍为同步调用。
+- 默认在线和浏览器入口在发起网络或 Playwright 操作前拒绝；显式开启后的在线请求最多一页，离线导入最多 2 MB HTML、100 个职位卡片，当前页最多 20 个，Agent 工具预算默认 8 次。
+- 可选 Playwright 创建、导航、状态、DOM 读取和关闭全部进入同一个守护单线程执行器；Tomcat 线程只等待 Future 结果。
+- 浏览器默认禁用且懒启动，测试和正常 Web 启动不创建 Playwright；有头/无头切换先关闭旧上下文。
 - MCP 与 Web 是两个独立 JVM 进程，各自持有浏览器；MCP 通过本机 HTTP 导入 Web，不能跨进程直接操作 Web 的 Playwright 对象。
 - MCP stdout 只允许逐行 JSON-RPC；Spring Banner 和 Web 日志不会进入 MCP stdout。
-- H2 与浏览器用户数据位于项目 `data/`，删除后可重新初始化；会话删除由用户手动进行。
+- H2 保存业务数据、Agent 任务/步骤/确认单和 JDBC 对话记忆；浏览器用户数据位于项目 `data/`。localStorage 只保存当前任务和会话 ID，不保存密钥或档案。
 
 ## 7. 验证契约
 

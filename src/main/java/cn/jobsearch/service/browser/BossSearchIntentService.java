@@ -4,7 +4,7 @@ import cn.jobsearch.config.AiProperties;
 import cn.jobsearch.dto.BrowserIntentRequest;
 import cn.jobsearch.dto.BrowserIntentResponse;
 import cn.jobsearch.service.ApiException;
-import cn.jobsearch.service.agent.DeepSeekClient;
+import cn.jobsearch.service.agent.StructuredAiService;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
@@ -62,22 +62,22 @@ public class BossSearchIntentService {
     private static final List<String> MANUAL_STEPS = List.of(
             "打开无搜索参数的 BOSS 基础职位页",
             "由你手动完成扫码、验证、关键词和城市搜索",
-            "核对当前列表后勾选确认，再读取当前页职位");
+            "激活职位结果标签，点击确认当前页并采集");
 
     private final AiProperties aiProperties;
-    private final DeepSeekClient deepSeekClient;
+    private final StructuredAiService structuredAiService;
     private final ObjectMapper objectMapper;
 
-    public BossSearchIntentService(AiProperties aiProperties, DeepSeekClient deepSeekClient,
+    public BossSearchIntentService(AiProperties aiProperties, StructuredAiService structuredAiService,
                                    ObjectMapper objectMapper) {
         this.aiProperties = aiProperties;
-        this.deepSeekClient = deepSeekClient;
+        this.structuredAiService = structuredAiService;
         this.objectMapper = objectMapper;
     }
 
     public BrowserIntentResponse parse(BrowserIntentRequest request) {
         if (aiProperties.isConfigured()) {
-            AiIntent intent = deepSeekClient.completeJson(systemPrompt(), userPrompt(request.text()), AiIntent.class);
+            AiIntent intent = structuredAiService.completeJson(systemPrompt(), userPrompt(request.text()), AiIntent.class);
             return response(intent.query(), intent.city(), intent.maxItems(), "DEEPSEEK");
         }
         return parseLocally(request.text());

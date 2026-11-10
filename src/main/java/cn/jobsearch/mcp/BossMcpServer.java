@@ -54,6 +54,7 @@ public final class BossMcpServer {
 
     private static BrowserProperties browserProperties() {
         BrowserProperties properties = new BrowserProperties();
+        properties.setEnabled(Boolean.parseBoolean(setting("BOSS_BROWSER_ENABLED", "false")));
         properties.setProfileDir(setting("BOSS_BROWSER_PROFILE", "./data/browser-profile"));
         properties.setHeadless(Boolean.parseBoolean(setting("BOSS_BROWSER_HEADLESS", "false")));
         properties.setChannel(setting("BOSS_BROWSER_CHANNEL", "chrome"));
